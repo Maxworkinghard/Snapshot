@@ -198,10 +198,25 @@ pub(crate) fn walk_in_place(walk: &[u8], idle: &[u8]) -> Result<Option<Vec<u8>>,
     let shift_y = ground as i64 - walk_bottom as i64;
     // 跟着人物中心裁框：手脚摆动会让外框忽宽忽窄，直接用外框中心会左右抖，按帧号拟合成匀速
     let (slope, intercept) = fit_line(&centers);
+    let along_line = |index: usize| slope * index as f64 + intercept;
+    // 走走停停的（nashor 钻地：先原地钻下去，再横着钻过去，最后原地钻出来）直线跟不上，
+    // 顺着直线裁会把人物裁掉一块，这时改成每帧对准人物中心。比框还宽的帧怎么裁都会缺，不算
+    let follow_line = boxes.iter().all(|&(index, bounds)| {
+        let left = (along_line(index) - width as f64 / 2.0).round();
+        bounds[2] - bounds[0] > width
+            || (bounds[0] as f64 >= left && bounds[2] as f64 <= left + width as f64)
+    });
+    let mut figure_centers = vec![None; images.len()];
+    for &(index, bounds) in &boxes {
+        figure_centers[index] = Some((bounds[0] + bounds[2]) as f64 / 2.0);
+    }
 
     let mut output = Vec::with_capacity(frames.len());
     for (index, (image, delay)) in frames.into_iter().enumerate() {
-        let center = slope * index as f64 + intercept;
+        let center = match figure_centers[index] {
+            Some(center) if !follow_line => center,
+            _ => along_line(index),
+        };
         let left = (center - width as f64 / 2.0).round() as i64;
         let mut canvas = RgbaImage::from_pixel(width, height, backdrop.fill());
         for y in 0..height {
@@ -278,6 +293,34 @@ mod tests {
                 "人物应当在框中间，实际中心 {center}"
             );
             assert_eq!(bounds[3], 80, "脚底应当和待机一样踩在底边");
+        }
+    }
+
+    #[test]
+    fn a_stop_and_go_walk_is_kept_centered() {
+        // 走走停停：先原地待着，再一下横过去，最后停住（nashor 钻地就是这样），直线跟不上
+        let idle = block_gif((40, 80), CLEAR, (10, 30), &[(15, 50), (15, 50)]);
+        let spots = [
+            (10, 10),
+            (10, 10),
+            (10, 10),
+            (60, 10),
+            (110, 10),
+            (140, 10),
+            (140, 10),
+            (140, 10),
+        ];
+        let walked = walk_in_place(&block_gif((160, 80), CLEAR, (10, 30), &spots), &idle)
+            .expect("处理失败")
+            .expect("横穿画布的应当被改成原地走");
+        for (image, _) in &decode(&walked).expect("输出解不开") {
+            let bounds = figure_box(image, Backdrop::Transparent).expect("人物不见了");
+            assert_eq!(bounds[2] - bounds[0], 10, "人物被裁掉了一块");
+            let center = (bounds[0] + bounds[2]) as f64 / 2.0;
+            assert!(
+                (center - 9.0).abs() <= 1.0,
+                "人物应当在框中间，实际中心 {center}"
+            );
         }
     }
 
