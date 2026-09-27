@@ -3,13 +3,18 @@
 //! 有的素材包把走路画成人物从宽画布的一头走到另一头（740×410 里横走将近 300px）。
 //! 桌宠窗口是方的，整张缩进去人物只剩二十几像素高，还在窗口里滑来滑去；拖动时窗口本身
 //! 已经跟着鼠标在走，要的是原地踏步。这里每帧跟着人物裁一个固定宽度的框，高度和地面线
-//! 对齐默认动作：拖起来和待机时一样大，脚踩在同一条线上。本来就原地走的不动。
+//! 对齐默认动作：拖起来和待机时一样大，脚踩在同一条线上（走路画得比待机大一截的先缩到一样高）。
+//! 本来就原地走的不动。
 
 use super::*;
 use image::{codecs::gif::GifDecoder, AnimationDecoder, Rgba};
 
 /// 人物中心的横向移动超过自身宽度的这个比例，才算横穿画布
 const TRAVEL_RATIO: f64 = 0.5;
+
+/// 走路里最高的一帧比待机高出这个比例，就算素材把走路画大了，缩到和待机一样高。
+/// 同一套画风的包差不到这么多（现有的包在 0.96–1.08 之间），像素画不会被重新采样
+const OVERSIZE_RATIO: f64 = 1.15;
 
 /// 背景画进 GIF 里的素材，和背景色差多少才算人物
 const SOLID_TOLERANCE: i16 = 24;
@@ -142,35 +147,113 @@ fn fit_line(points: &[(f64, f64)]) -> (f64, f64) {
     (slope, mean_y - slope * mean_x)
 }
 
+/// 每帧人物的外框（没有人物的帧不在里面），以及由它算出的宽度（从窄到宽）和中心（帧号, 横坐标）
+struct Figures {
+    boxes: Vec<(usize, [u32; 4])>,
+    widths: Vec<u32>,
+    centers: Vec<(f64, f64)>,
+}
+
+impl Figures {
+    fn of(images: &[RgbaImage], backdrop: Backdrop) -> Self {
+        let boxes: Vec<(usize, [u32; 4])> = images
+            .iter()
+            .enumerate()
+            .filter_map(|(index, image)| figure_box(image, backdrop).map(|bounds| (index, bounds)))
+            .collect();
+        let mut widths: Vec<u32> = boxes
+            .iter()
+            .map(|(_, bounds)| bounds[2] - bounds[0])
+            .collect();
+        widths.sort_unstable();
+        let centers = boxes
+            .iter()
+            .map(|(index, bounds)| (*index as f64, (bounds[0] + bounds[2]) as f64 / 2.0))
+            .collect();
+        Figures {
+            boxes,
+            widths,
+            centers,
+        }
+    }
+}
+
+/// 等比缩小一帧。先把颜色乘上 alpha 再缩，透明处的黑色不会渗进人物边缘；
+/// 缩完按覆盖过没过半切回全透明或不透明（GIF 只有这两种）
+fn shrink(image: &RgbaImage, scale: f64) -> RgbaImage {
+    let (width, height) = image.dimensions();
+    let mut premultiplied = image.clone();
+    for pixel in premultiplied.pixels_mut() {
+        let alpha = pixel[3] as u32;
+        for channel in 0..3 {
+            pixel[channel] = ((pixel[channel] as u32 * alpha + 127) / 255) as u8;
+        }
+    }
+    let mut shrunk = image::imageops::resize(
+        &premultiplied,
+        ((width as f64 * scale).round() as u32).max(1),
+        ((height as f64 * scale).round() as u32).max(1),
+        image::imageops::FilterType::Triangle,
+    );
+    for pixel in shrunk.pixels_mut() {
+        let alpha = pixel[3] as u32;
+        if alpha < 128 {
+            *pixel = Rgba([0, 0, 0, 0]);
+        } else {
+            for channel in 0..3 {
+                pixel[channel] = ((pixel[channel] as u32 * 255 + alpha / 2) / alpha).min(255) as u8;
+            }
+            pixel[3] = 255;
+        }
+    }
+    shrunk
+}
+
+/// 每帧都缩一遍，分给几个线程一起做：调试版里缩一张大画布要大半秒，几十帧挨个缩要等很久
+fn shrink_all(images: &[RgbaImage], scale: f64) -> Vec<RgbaImage> {
+    let threads = std::thread::available_parallelism().map_or(1, |count| count.get());
+    let chunk = images.len().div_ceil(threads).max(1);
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = images
+            .chunks(chunk)
+            .map(|part| {
+                scope.spawn(move || {
+                    part.iter()
+                        .map(|image| shrink(image, scale))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .flat_map(|worker| worker.join().expect("缩放线程出错"))
+            .collect()
+    })
+}
+
 /// 横穿画布的走路动画改成原地走；本来就原地走的返回 None，照用原图。
 /// `idle` 是这个形象的默认动作，输出的高度和地面线跟它对齐。
 pub(crate) fn walk_in_place(walk: &[u8], idle: &[u8]) -> Result<Option<Vec<u8>>, String> {
-    let frames = decode(walk)?;
-    if frames.len() < 2 {
+    let (mut images, delays): (Vec<RgbaImage>, Vec<u16>) = decode(walk)?.into_iter().unzip();
+    if images.len() < 2 {
         return Ok(None);
     }
-    let images: Vec<RgbaImage> = frames.iter().map(|(image, _)| image.clone()).collect();
     let backdrop = Backdrop::of(&images);
-    let boxes: Vec<(usize, [u32; 4])> = images
-        .iter()
-        .enumerate()
-        .filter_map(|(index, image)| figure_box(image, backdrop).map(|bounds| (index, bounds)))
-        .collect();
-    if boxes.len() < 2 {
+    let mut figures = Figures::of(&images, backdrop);
+    if figures.boxes.len() < 2 {
         return Ok(None);
     }
-    let mut widths: Vec<u32> = boxes
+    let lowest = figures
+        .centers
         .iter()
-        .map(|(_, bounds)| bounds[2] - bounds[0])
-        .collect();
-    widths.sort_unstable();
-    let centers: Vec<(f64, f64)> = boxes
+        .map(|point| point.1)
+        .fold(f64::MAX, f64::min);
+    let highest = figures
+        .centers
         .iter()
-        .map(|(index, bounds)| (*index as f64, (bounds[0] + bounds[2]) as f64 / 2.0))
-        .collect();
-    let lowest = centers.iter().map(|point| point.1).fold(f64::MAX, f64::min);
-    let highest = centers.iter().map(|point| point.1).fold(f64::MIN, f64::max);
-    if highest - lowest <= widths[widths.len() / 2] as f64 * TRAVEL_RATIO {
+        .map(|point| point.1)
+        .fold(f64::MIN, f64::max);
+    if highest - lowest <= figures.widths[figures.widths.len() / 2] as f64 * TRAVEL_RATIO {
         return Ok(None);
     }
 
@@ -181,10 +264,31 @@ pub(crate) fn walk_in_place(walk: &[u8], idle: &[u8]) -> Result<Option<Vec<u8>>,
     let idle_backdrop = Backdrop::of(std::slice::from_ref(&idle_frame));
     let (idle_width, idle_height) = idle_frame.dimensions();
     let side = idle_width.max(idle_height);
-    let idle_bottom = figure_box(&idle_frame, idle_backdrop)
-        .map(|bounds| bounds[3])
-        .unwrap_or(idle_height);
+    let idle_box = figure_box(&idle_frame, idle_backdrop);
+    let idle_bottom = idle_box.map(|bounds| bounds[3]).unwrap_or(idle_height);
     let ground = (side - idle_height) / 2 + idle_bottom;
+
+    // 有的包把走路画得比待机大（nashor 钻地比待机高近三成），照原样裁头顶会出框，
+    // 这时整段缩到和待机一样高
+    let tallest = figures
+        .boxes
+        .iter()
+        .map(|(_, bounds)| bounds[3] - bounds[1])
+        .max()
+        .unwrap_or(0);
+    let idle_tallest = idle_box
+        .map(|bounds| bounds[3] - bounds[1])
+        .unwrap_or(idle_height);
+    if tallest as f64 > idle_tallest as f64 * OVERSIZE_RATIO {
+        let scale = idle_tallest as f64 / tallest as f64;
+        images = shrink_all(&images, scale);
+        figures = Figures::of(&images, backdrop);
+    }
+    let Figures {
+        boxes,
+        widths,
+        centers,
+    } = figures;
 
     // 输出是竖长的（宽不超过长边），这样在方形窗口里的缩放和默认动作一样
     let widest = *widths.last().unwrap_or(&side);
@@ -198,10 +302,25 @@ pub(crate) fn walk_in_place(walk: &[u8], idle: &[u8]) -> Result<Option<Vec<u8>>,
     let shift_y = ground as i64 - walk_bottom as i64;
     // 跟着人物中心裁框：手脚摆动会让外框忽宽忽窄，直接用外框中心会左右抖，按帧号拟合成匀速
     let (slope, intercept) = fit_line(&centers);
+    let along_line = |index: usize| slope * index as f64 + intercept;
+    // 走走停停的（nashor 钻地：先原地钻下去，再横着钻过去，最后原地钻出来）直线跟不上，
+    // 顺着直线裁会把人物裁掉一块，这时改成每帧对准人物中心。比框还宽的帧怎么裁都会缺，不算
+    let follow_line = boxes.iter().all(|&(index, bounds)| {
+        let left = (along_line(index) - width as f64 / 2.0).round();
+        bounds[2] - bounds[0] > width
+            || (bounds[0] as f64 >= left && bounds[2] as f64 <= left + width as f64)
+    });
+    let mut figure_centers = vec![None; images.len()];
+    for &(index, bounds) in &boxes {
+        figure_centers[index] = Some((bounds[0] + bounds[2]) as f64 / 2.0);
+    }
 
-    let mut output = Vec::with_capacity(frames.len());
-    for (index, (image, delay)) in frames.into_iter().enumerate() {
-        let center = slope * index as f64 + intercept;
+    let mut output = Vec::with_capacity(images.len());
+    for (index, (image, delay)) in images.into_iter().zip(delays).enumerate() {
+        let center = match figure_centers[index] {
+            Some(center) if !follow_line => center,
+            _ => along_line(index),
+        };
         let left = (center - width as f64 / 2.0).round() as i64;
         let mut canvas = RgbaImage::from_pixel(width, height, backdrop.fill());
         for y in 0..height {
@@ -276,6 +395,53 @@ mod tests {
             assert!(
                 (center - 9.0).abs() <= 1.0,
                 "人物应当在框中间，实际中心 {center}"
+            );
+            assert_eq!(bounds[3], 80, "脚底应当和待机一样踩在底边");
+        }
+    }
+
+    #[test]
+    fn a_stop_and_go_walk_is_kept_centered() {
+        // 走走停停：先原地待着，再一下横过去，最后停住（nashor 钻地就是这样），直线跟不上
+        let idle = block_gif((40, 80), CLEAR, (10, 30), &[(15, 50), (15, 50)]);
+        let spots = [
+            (10, 10),
+            (10, 10),
+            (10, 10),
+            (60, 10),
+            (110, 10),
+            (140, 10),
+            (140, 10),
+            (140, 10),
+        ];
+        let walked = walk_in_place(&block_gif((160, 80), CLEAR, (10, 30), &spots), &idle)
+            .expect("处理失败")
+            .expect("横穿画布的应当被改成原地走");
+        for (image, _) in &decode(&walked).expect("输出解不开") {
+            let bounds = figure_box(image, Backdrop::Transparent).expect("人物不见了");
+            assert_eq!(bounds[2] - bounds[0], 10, "人物被裁掉了一块");
+            let center = (bounds[0] + bounds[2]) as f64 / 2.0;
+            assert!(
+                (center - 9.0).abs() <= 1.0,
+                "人物应当在框中间，实际中心 {center}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_walk_drawn_bigger_than_idle_is_shrunk_to_the_same_height() {
+        // 待机高 30；走路画成 40 高（大了三成多），拖动时应当和待机一样高、脚踩在同一条线上
+        let idle = block_gif((40, 80), CLEAR, (10, 30), &[(15, 50), (15, 50)]);
+        let spots: Vec<(u32, u32)> = (0..8).map(|index| (8 + index * 20, 8)).collect();
+        let walked = walk_in_place(&block_gif((200, 100), CLEAR, (12, 40), &spots), &idle)
+            .expect("处理失败")
+            .expect("横穿画布的应当被改成原地走");
+        for (image, _) in &decode(&walked).expect("输出解不开") {
+            let bounds = figure_box(image, Backdrop::Transparent).expect("人物不见了");
+            let tall = bounds[3] - bounds[1];
+            assert!(
+                (29..=31).contains(&tall),
+                "应当缩到和待机一样高，实际 {tall}"
             );
             assert_eq!(bounds[3], 80, "脚底应当和待机一样踩在底边");
         }

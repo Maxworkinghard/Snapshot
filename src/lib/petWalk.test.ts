@@ -25,16 +25,27 @@ const clerk = [
 ];
 const yamadaQ = ["yamada-q-idle.gif", "yamada-q-running-right.gif", "yamada-q-running-left.gif", "yamada-q-running.gif", "yamada-q-waving.gif"];
 const clawd = ["clawd_gifs/clawd-idle.gif", "clawd_gifs/clawd-crabwalk.gif", "clawd_gifs/clawd-dance.gif"];
-const nashor = ["nashor_pet_v2/gifs/nashor_idle.gif", "nashor_pet_v2/gifs/nashor_burrow_left.gif", "nashor_pet_v2/gifs/nashor_attack_v2.gif"];
+const nashorV2 = [
+  "nashor_pet_v2/gifs/nashor_idle.gif",
+  "nashor_pet_v2/gifs/nashor_attack_v2.gif",
+  "nashor_pet_v2/gifs/nashor_burrow_left.gif",
+  "nashor_pet_v2/gifs/nashor_burrow_right.gif",
+  "nashor_pet_v2/gifs/nashor_sway.gif",
+];
+const nashorV1 = ["nashor_pet_v1/gifs/nashor_idle.gif", "nashor_pet_v1/gifs/nashor_attack.gif", "nashor_pet_v1/gifs/nashor_sway.gif"];
 
 describe("走路动作的识别", () => {
-  it("名字带 walk / run / move / 走 / 跑 的算走路，朝向看 left / right / 左 / 右", () => {
+  it("名字带 walk / run / move / 走 / 跑、或单独写了朝向的算走路，朝向看 left / right / 左 / 右", () => {
     expect(isWalkEntry("grok_pixel/gifs/grok_walk_left.gif")).toBe(true);
     expect(isWalkEntry("yamada-q-running.gif")).toBe(true);
     expect(isWalkEntry("clawd-crabwalk.gif")).toBe(true);
     expect(isWalkEntry("向左走.gif")).toBe(true);
     expect(isWalkEntry("grok_pixel/gifs/grok_wave.gif")).toBe(false);
-    expect(isWalkEntry("nashor_burrow_left.gif")).toBe(false);
+    // 钻地往左 / 往右是 nashor 的走法：名字里没有 walk，但写了朝向
+    expect(isWalkEntry("nashor_burrow_left.gif")).toBe(true);
+    expect(isWalkEntry("nashor_burrow_right.gif")).toBe(true);
+    // 单词里恰好含 right 的不算朝向
+    expect(isWalkEntry("cat_frightened.gif")).toBe(false);
     expect(walkDirection("grok_walk_left.gif")).toBe("left");
     expect(walkDirection("yamada-q-running-right.gif")).toBe("right");
     expect(walkDirection("向右跑.gif")).toBe("right");
@@ -48,6 +59,11 @@ describe("走路动作的识别", () => {
       "grok_pixel/gifs/grok_wave.gif",
     ]);
     expect(cycleEntries(yamadaQ)).toEqual(["yamada-q-idle.gif", "yamada-q-waving.gif"]);
+    expect(cycleEntries(nashorV2)).toEqual([
+      "nashor_pet_v2/gifs/nashor_idle.gif",
+      "nashor_pet_v2/gifs/nashor_attack_v2.gif",
+      "nashor_pet_v2/gifs/nashor_sway.gif",
+    ]);
     expect(cycleEntries(["walk_left.gif", "walk_right.gif"])).toEqual(["walk_left.gif", "walk_right.gif"]);
   });
 });
@@ -57,6 +73,8 @@ describe("拖动时播哪个走路动作", () => {
     expect(pickWalk(grok, "left", grok[0])).toEqual({ entry: "grok_pixel/gifs/grok_walk_left.gif", flip: false });
     expect(pickWalk(grok, "right", grok[0])).toEqual({ entry: "grok_pixel/gifs/grok_walk_right.gif", flip: false });
     expect(pickWalk(yamadaQ, "left", yamadaQ[0])).toEqual({ entry: "yamada-q-running-left.gif", flip: false });
+    expect(pickWalk(nashorV2, "left", nashorV2[0])).toEqual({ entry: "nashor_pet_v2/gifs/nashor_burrow_left.gif", flip: false });
+    expect(pickWalk(nashorV2, "right", nashorV2[0])).toEqual({ entry: "nashor_pet_v2/gifs/nashor_burrow_right.gif", flip: false });
   });
 
   it("一个包里有两套装扮时跟着当前那套走，并且优先原地走的版本", () => {
@@ -75,7 +93,7 @@ describe("拖动时播哪个走路动作", () => {
   });
 
   it("没有走路动作的包，拖动时不换动作", () => {
-    expect(pickWalk(nashor, "left", nashor[0])).toBeNull();
+    expect(pickWalk(nashorV1, "left", nashorV1[0])).toBeNull();
   });
 });
 

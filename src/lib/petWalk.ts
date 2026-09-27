@@ -1,8 +1,9 @@
 /**
  * 走路动作：只在向左 / 向右拖动桌宠时播放，不参与点击切换和自动轮换。
  *
- * 靠文件名认：名字里带 walk / run / move（或 走 / 跑）的算走路，
- * 再带 left / right（或 左 / 右）的就是朝那个方向走。以后导入的包按同样的规则认。
+ * 靠文件名认：名字里带 walk / run / move（或 走 / 跑）的算走路；
+ * 单独写了 left / right（或 左 / 右）朝向的也算，比如 nashor_burrow_left 钻地往左走。
+ * 带朝向的就是朝那个方向走。以后导入的包按同样的规则认。
  */
 
 export type WalkDirection = "left" | "right";
@@ -17,8 +18,14 @@ function stemOf(entry: string) {
   return (entry.split("/").pop() ?? entry).replace(/\.[^.]+$/, "").toLowerCase();
 }
 
+/** 名字里有单独的朝向词：burrow_left 的 left 算，frightened 里的 right 不算 */
+function namesSide(stem: string) {
+  return stem.split(/[^a-z]+/).some((word) => word === "left" || word === "right") || /左|右/.test(stem);
+}
+
 export function isWalkEntry(entry: string): boolean {
-  return /walk|run|move|走|跑/.test(stemOf(entry));
+  const stem = stemOf(entry);
+  return /walk|run|move|走|跑/.test(stem) || namesSide(stem);
 }
 
 /** 名字里写明的朝向；没写就是 null（比如 crabwalk，往哪边拖都能用） */
