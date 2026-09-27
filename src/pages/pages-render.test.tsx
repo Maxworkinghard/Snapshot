@@ -123,6 +123,16 @@ describe("B2 拆页后逐页渲染", () => {
     await waitFor(() => expect(window.localStorage.getItem("snapshot-layout")).toBe("timeline"));
     window.localStorage.removeItem("snapshot-layout");
   });
+
+  it("「时间线」的设置页里也能调桌宠大小", async () => {
+    await renderApp();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /^主题库/ }));
+    await user.click(await screen.findByRole("radio", { name: /时间线/ }));
+    await user.click(await screen.findByRole("button", { name: "设置" }));
+    expect(await screen.findByRole("slider", { name: "大小" })).toBeTruthy();
+    window.localStorage.removeItem("snapshot-layout");
+  });
 });
 // jsdom 未实现 Element.prototype.scrollTo；App 换页后会调用它回到顶部。
 if (!Element.prototype.scrollTo) {
