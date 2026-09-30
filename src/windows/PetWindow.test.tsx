@@ -47,9 +47,11 @@ function settingsWith(asset: PetAsset) {
 }
 
 async function renderPet(asset: PetAsset = grok) {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.useFakeTimers();
+  const calls: string[] = [];
   setupTauriMock(
     (command) => {
+      calls.push(command);
       if (command === "load_settings") return settingsWith(asset);
       if (command === "get_previous_app") return { id: null, pid: null, name: "", title: "" };
       return undefined;
@@ -58,12 +60,12 @@ async function renderPet(asset: PetAsset = grok) {
   );
   // petSync 在模块加载时判断是不是 Tauri 环境，要在装好 mock 之后再加载
   vi.resetModules();
-  const { PetWindow } = await import("./PetWindow");
+  const { PetWindow, CLICK_DELAY_MS } = await import("./PetWindow");
   const view = render(<PetWindow />);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
   });
-  return view;
+  return { ...view, calls, delay: CLICK_DELAY_MS };
 }
 
 /** 桌宠上看得见的那张图：文件名（解码后）和是否镜像 */
@@ -94,25 +96,79 @@ function click(container: HTMLElement) {
   fireEvent.pointerUp(window);
 }
 
-describe("桌宠：点击和自动轮换", () => {
-  it("每 8 秒换一个动作，转一圈都不会轮到走路", async () => {
+describe("桌宠：点击切换，平时停在待机", () => {
+  it("不会自己换动作", async () => {
     const { container } = await renderPet();
-    const seen = [shown(container).file];
-    for (let round = 0; round < 3; round += 1) {
-      await elapse(8000);
-      seen.push(shown(container).file);
-    }
-    expect(seen).toEqual(["grok_idle.gif", "grok_jump.gif", "grok_wave.gif", "grok_idle.gif"]);
+    await elapse(8000);
+    expect(shown(container).file).toBe("grok_idle.gif");
+    await elapse(8000);
+    expect(shown(container).file).toBe("grok_idle.gif");
   });
 
-  it("点一下换下一个，同样跳过走路", async () => {
-    const { container } = await renderPet();
-    const seen = [shown(container).file];
-    for (let round = 0; round < 3; round += 1) {
-      await act(async () => click(container));
-      seen.push(shown(container).file);
-    }
-    expect(seen).toEqual(["grok_idle.gif", "grok_jump.gif", "grok_wave.gif", "grok_idle.gif"]);
+  it("点一下换到下一个非走路动作，3 秒后回到待机，再点换到再下一个", async () => {
+    const { container, calls, delay } = await renderPet();
+    expect(shown(container).file).toBe("grok_idle.gif");
+
+    await act(async () => click(container));
+    expect(shown(container).file).toBe("grok_idle.gif");
+    await elapse(delay);
+    expect(shown(container).file).toBe("grok_jump.gif");
+    expect(calls).not.toContain("show_launchpad");
+    await elapse(2999);
+    expect(shown(container).file).toBe("grok_jump.gif");
+    await elapse(1);
+    expect(shown(container).file).toBe("grok_idle.gif");
+
+    await act(async () => click(container));
+    await elapse(delay);
+    expect(shown(container).file).toBe("grok_wave.gif");
+    await elapse(3000);
+    expect(shown(container).file).toBe("grok_idle.gif");
+
+    await act(async () => click(container));
+    await elapse(delay);
+    expect(shown(container).file).toBe("grok_jump.gif");
+  });
+
+  it("3 秒内再点一下会换到下一个，并重新计算回待机的时间", async () => {
+    const { container, delay } = await renderPet();
+    await act(async () => click(container));
+    await elapse(delay);
+    expect(shown(container).file).toBe("grok_jump.gif");
+    await elapse(2000);
+    await act(async () => click(container));
+    await elapse(delay);
+    expect(shown(container).file).toBe("grok_wave.gif");
+    await elapse(2000);
+    expect(shown(container).file).toBe("grok_wave.gif");
+    await elapse(1000);
+    expect(shown(container).file).toBe("grok_idle.gif");
+  });
+
+  it("双击打开启动台，动作留在待机，下一次单击仍从下一个动作开始", async () => {
+    const { container, calls, delay } = await renderPet();
+    await act(async () => click(container));
+    await elapse(120);
+    await act(async () => click(container));
+    await elapse(delay);
+    expect(shown(container).file).toBe("grok_idle.gif");
+    expect(calls).toContain("show_launchpad");
+
+    calls.length = 0;
+    await act(async () => click(container));
+    await elapse(delay);
+    expect(calls).not.toContain("show_launchpad");
+    expect(shown(container).file).toBe("grok_jump.gif");
+  });
+
+  it("除了待机没有别的可切换动作时，点击仍停在待机", async () => {
+    const { container, delay } = await renderPet({
+      ...grok,
+      animations: ["gifs/grok_idle.gif", "gifs/grok_walk_left.gif", "gifs/grok_walk_right.gif"],
+    });
+    await act(async () => click(container));
+    await elapse(delay + 3000);
+    expect(shown(container).file).toBe("grok_idle.gif");
   });
 });
 

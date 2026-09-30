@@ -6,6 +6,7 @@ import {
   loadSettings,
   onPreviousAppChanged,
   onSettingsChanged,
+  showLaunchpad,
   showQuickMenu,
 } from "../lib/backend";
 import { iconUrl, petUrl, petWalkUrl } from "../lib/media";
@@ -28,30 +29,56 @@ async function keepOnScreen(petWindow: Window) {
 
 /** 窗口停下这么久没再动，就算松手了，换回原来的动作 */
 const WALK_SETTLE_MS = 250;
+/** 点一下换上的动作只停这么久，然后回到默认待机 */
+const CLICK_ACTION_MS = 3000;
+/** 等这么久还没来第二下，才算单击。第二下是双击，打开启动台，不换动作 */
+export const CLICK_DELAY_MS = 400;
 
 export function PetWindow() {
   const [app, setApp] = useState<PreviousApp>({ id: null, pid: null, name: "", title: "" });
   const [appearanceId, setAppearanceId] = useState("app-icon");
   const [animations, setAnimations] = useState<string[]>([]);
-  const [animationIndex, setAnimationIndex] = useState(0);
+  const [restingEntry, setRestingEntry] = useState<string | null>(null);
+  const [shownEntry, setShownEntry] = useState<string | null>(null);
   const [petSize, setPetSize] = useState(60);
   // 读到设置前不定大小，免得先按默认缩放一次再跳到用户设的大小
   const [petScale, setPetScale] = useState<number | null>(null);
   const [walking, setWalking] = useState<WalkDirection | null>(null);
   const dragged = useRef(false);
+  // 点过之后下一次从这里接着换，回到待机也不清掉，免得每次点击都是同一个动作
+  const actionCursor = useRef(0);
+  const returnTimer = useRef<number | undefined>(undefined);
+  const clickTimer = useRef<number | undefined>(undefined);
+  const restingRef = useRef<string | null>(null);
 
-  // 点击切换和自动轮换只在常规动作里转，走路动作留给拖动
+  // 点击切换只在常规动作里转，走路动作留给拖动
   const cycle = cycleEntries(animations);
+  const resting = restingEntry && cycle.includes(restingEntry) ? restingEntry : (cycle[0] ?? null);
+  restingRef.current = resting;
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(returnTimer.current);
+      window.clearTimeout(clickTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     const applyAppearance = (settings: Settings) => {
+      window.clearTimeout(returnTimer.current);
+      window.clearTimeout(clickTimer.current);
+      clickTimer.current = undefined;
       const id = settings.selectedAppearanceId;
       const asset = settings.petAssets.find((item) => item.id === id);
       const entries = asset?.animations ?? [];
-      const initialIndex = asset ? Math.max(0, cycleEntries(entries).indexOf(asset.entry)) : 0;
+      const actions = cycleEntries(entries);
+      const nextResting = asset && actions.includes(asset.entry) ? asset.entry : (actions[0] ?? null);
+      actionCursor.current = Math.max(0, actions.indexOf(nextResting ?? ""));
       setAppearanceId(id);
       setAnimations(entries);
-      setAnimationIndex(initialIndex);
+      setRestingEntry(nextResting);
+      setShownEntry(nextResting);
       setPetScale(settings.petScale ?? PET_SCALE.default);
     };
     void getPreviousApp().then(setApp);
@@ -63,15 +90,6 @@ export function PetWindow() {
       void settingsListener.then((unlisten) => unlisten());
     };
   }, []);
-
-  const cycleLength = cycle.length;
-  useEffect(() => {
-    if (appearanceId === "app-icon" || cycleLength < 2) return;
-    const timer = window.setInterval(() => {
-      setAnimationIndex((index) => (index + 1) % cycleLength);
-    }, 8000);
-    return () => window.clearInterval(timer);
-  }, [appearanceId, cycleLength]);
 
   useEffect(() => {
     if (petScale === null) return;
@@ -133,13 +151,23 @@ export function PetWindow() {
     const startY = event.clientY;
     const finishClick = () => {
       cleanup();
-      if (!dragged.current && appearanceId !== "app-icon" && cycleLength > 1) {
-        setAnimationIndex((index) => (index + 1) % cycleLength);
+      if (dragged.current) return;
+      if (clickTimer.current !== undefined) {
+        window.clearTimeout(clickTimer.current);
+        clickTimer.current = undefined;
+        void showLaunchpad(event.screenX, event.screenY);
+        return;
       }
+      clickTimer.current = window.setTimeout(() => {
+        clickTimer.current = undefined;
+        switchOnClick();
+      }, CLICK_DELAY_MS);
     };
     const markDrag = (move: PointerEvent) => {
       if (Math.abs(move.clientX - startX) + Math.abs(move.clientY - startY) <= 4) return;
       dragged.current = true;
+      window.clearTimeout(clickTimer.current);
+      clickTimer.current = undefined;
       cleanup();
       void getCurrentWindow().startDragging();
     };
@@ -151,8 +179,24 @@ export function PetWindow() {
     window.addEventListener("pointerup", finishClick);
   }
 
+  // 平时停在默认待机。点一下换到下一个非走路动作，停几秒再回到待机。
+  function switchOnClick() {
+    const rest = restingRef.current;
+    if (appearanceId === "app-icon" || !rest || cycle.length < 2) return;
+    for (let step = 1; step <= cycle.length; step += 1) {
+      const index = (actionCursor.current + step) % cycle.length;
+      const entry = cycle[index];
+      if (entry === rest) continue;
+      actionCursor.current = index;
+      setShownEntry(entry);
+      window.clearTimeout(returnTimer.current);
+      returnTimer.current = window.setTimeout(() => setShownEntry(restingRef.current), CLICK_ACTION_MS);
+      return;
+    }
+  }
+
   // 换了动作就告诉主窗口，侧栏的猫跟着换；主窗口刚打开来问时也答一声（走路不算，侧栏不跟着走）
-  const currentEntry = cycle[animationIndex] ?? null;
+  const currentEntry = shownEntry && cycle.includes(shownEntry) ? shownEntry : resting;
   const current = useRef({ assetId: appearanceId, entry: currentEntry });
   current.current = { assetId: appearanceId, entry: currentEntry };
   useEffect(() => {

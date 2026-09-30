@@ -52,7 +52,7 @@ describe("走路动作的识别", () => {
     expect(walkDirection("clawd-crabwalk.gif")).toBeNull();
   });
 
-  it("点击和自动轮换不经过走路动作；整包都是走路时照常轮换", () => {
+  it("点击切换不经过走路动作；整包都是走路时这些动作仍可切换", () => {
     expect(cycleEntries(grok)).toEqual([
       "grok_pixel/gifs/grok_idle.gif",
       "grok_pixel/gifs/grok_jump.gif",

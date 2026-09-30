@@ -1,7 +1,7 @@
 import { emit, listen } from "@tauri-apps/api/event";
 
 /**
- * 桌宠正在播哪个动作。桌宠窗口是动作的「源头」（每 8 秒轮换、点一下换下一个），
+ * 桌宠正在播哪个动作。桌宠窗口是动作的「源头」（平时待机，点一下换下一个，3 秒后回到待机），
  * 主窗口侧栏的猫跟着它播，两边看到的永远是同一个动作。
  */
 export interface PetAnimation {

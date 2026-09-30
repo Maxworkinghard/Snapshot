@@ -1,5 +1,5 @@
 /**
- * 走路动作：只在向左 / 向右拖动桌宠时播放，不参与点击切换和自动轮换。
+ * 走路动作：只在向左 / 向右拖动桌宠时播放，不参与点击切换。
  *
  * 靠文件名认：名字里带 walk / run / move（或 走 / 跑）的算走路；
  * 单独写了 left / right（或 左 / 右）朝向的也算，比如 nashor_burrow_left 钻地往左走。
@@ -36,7 +36,7 @@ export function walkDirection(entry: string): WalkDirection | null {
   return null;
 }
 
-/** 点击和自动轮换用的动作：去掉走路的。整包都是走路时就不去了，免得没东西可播 */
+/** 点击切换用的动作：去掉走路的。整包都是走路时就不去了，免得没东西可播 */
 export function cycleEntries(entries: string[]): string[] {
   const rest = entries.filter((entry) => !isWalkEntry(entry));
   return rest.length ? rest : entries;
