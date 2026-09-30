@@ -3,6 +3,7 @@ mod activity;
 mod capabilities;
 mod capture;
 mod clipboard;
+mod launchpad;
 mod media;
 mod pet;
 mod pet_key;
@@ -39,6 +40,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::{
     borrow::Cow,
+    collections::HashMap,
     fs,
     io::{Cursor, Read},
     path::{Path, PathBuf},
@@ -78,6 +80,8 @@ struct AppState {
     annotate_title: Mutex<String>,
     /// 启动时没能注册上的全局快捷键，等主窗口加载后再提示用户
     shortcut_conflicts: Mutex<Vec<String>>,
+    launch_catalog: Mutex<Vec<launchpad::InstalledApp>>,
+    launch_icons: Mutex<HashMap<String, Vec<u8>>>,
 }
 
 pub(crate) fn truncate(value: &str, max: usize) -> String {
@@ -143,6 +147,8 @@ pub fn run() {
             annotate_png: Mutex::new(None),
             annotate_title: Mutex::new(String::new()),
             shortcut_conflicts: Mutex::new(Vec::new()),
+            launch_catalog: Mutex::new(Vec::new()),
+            launch_icons: Mutex::new(HashMap::new()),
         })
         .setup(|app| {
             let state = app.state::<AppState>();
@@ -256,6 +262,11 @@ pub fn run() {
                     api.prevent_close();
                     let _ = window.hide();
                 }
+            } else if window.label() == "launchpad" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    launchpad::conceal(window.app_handle());
+                }
             } else if window.label() == "pet" {
                 if let WindowEvent::Moved(position) = event {
                     let app = window.app_handle().clone();
@@ -315,6 +326,11 @@ pub fn run() {
             actions::hide_quick_menu,
             actions::run_action,
             actions::show_main_window,
+            launchpad::show_launchpad,
+            launchpad::hide_launchpad,
+            launchpad::launchpad_state,
+            launchpad::save_launchpad,
+            launchpad::launch_app,
             capture::get_annotate_image,
             capture::annotate_get_title,
             capture::annotate_copy,

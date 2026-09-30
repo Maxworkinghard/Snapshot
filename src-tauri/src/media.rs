@@ -104,6 +104,18 @@ fn serve(app: &AppHandle, path: &str) -> Result<Media, String> {
                 bytes: pet::read_walk(&state, id, entry)?,
             })
         }
+        "launch-icon" => {
+            let (id, size) = rest.rsplit_once('/').ok_or("图标路径不完整")?;
+            let size = size
+                .parse::<u32>()
+                .map_err(|_| "图标尺寸无效".to_string())?
+                .clamp(16, 256);
+            Ok(Media {
+                mime: "image/png",
+                immutable: false,
+                bytes: launchpad::icon_bytes(&state, id, size)?,
+            })
+        }
         "icon" => {
             let (pid, size) = rest.split_once('/').ok_or("图标路径不完整")?;
             let pid = pid.parse().map_err(|_| "pid 无效".to_string())?;

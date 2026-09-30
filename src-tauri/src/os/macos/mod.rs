@@ -4,6 +4,7 @@
 //! 共享代码只经 `os::` 调用。实现都用系统原生能力：ScreenCaptureKit 录制
 //! （经 Swift sidecar）、Accessibility 还原窗口、LaunchAgent 自启。
 
+mod apps;
 mod autostart;
 mod cursor;
 mod icon;
@@ -15,6 +16,7 @@ use crate::capture::Area;
 use image::RgbaImage;
 use std::{path::Path, process::Command};
 
+pub(crate) use apps::{installed_apps, launch_icon_png, launch_target};
 pub(crate) use autostart::apply_launch_on_boot as apply_autostart;
 pub(crate) use icon::png_for_pid as app_icon_png;
 pub(crate) use recorder::{start_recording, Recording};

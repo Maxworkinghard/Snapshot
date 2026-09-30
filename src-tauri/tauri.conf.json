@@ -54,6 +54,20 @@
         "visible": false
       },
       {
+        "label": "launchpad",
+        "title": "启动台",
+        "width": 1100,
+        "height": 720,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "visible": false,
+        "center": true
+      },
+      {
         "label": "annotate",
         "title": "标注截图",
         "width": 960,

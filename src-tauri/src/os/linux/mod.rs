@@ -4,6 +4,7 @@
 //! 共享代码只经 `os::` 调用。成熟的系统能力直接用（ffmpeg / xdotool / XDG / Freedesktop /
 //! portal），不为了语言统一重写。不可用时返回可读错误，不静默假装成功。
 
+mod apps;
 mod autostart;
 mod icon;
 mod recording;
@@ -18,6 +19,7 @@ use crate::recording::RecordOptions;
 use image::RgbaImage;
 use std::{path::Path, process::Command};
 
+pub(crate) use apps::{installed_apps, launch_icon_png, launch_target};
 pub(crate) use autostart::apply_launch_on_boot as apply_autostart;
 pub(crate) use scrolling::capture_scrolling_window;
 pub(crate) use window::restore_minimized;

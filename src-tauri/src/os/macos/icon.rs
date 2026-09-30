@@ -16,6 +16,10 @@ pub fn png_for_pid(pid: u32, size: u32) -> Option<Vec<u8>> {
     }
 }
 
+pub(crate) unsafe fn png_of(icon: &NSImage, size: u32) -> Option<Vec<u8>> {
+    downscale_to_png(icon, size)
+}
+
 /// 图标的 TIFF 里带全套尺寸（最大 1024×1024）；setSize 只改逻辑尺寸、
 /// 动不了 TIFFRepresentation 里的像素。要真压到目标边长，得把它画进
 /// 一个新的同尺寸 bitmap rep 再导出。

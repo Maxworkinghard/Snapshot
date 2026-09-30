@@ -44,7 +44,7 @@ core-foundation = "0.10"
 objc2 = "0.6"
 # NSGraphics/NSGraphicsContext/NSImageRep：把图标画进 64×64 的 NSBitmapImageRep 再导出 PNG
 # NSCursor：静帧截图合成光标（取当前系统光标的位图与热点）
-objc2-app-kit = { version = "0.3", features = ["NSBitmapImageRep", "NSCursor", "NSGraphics", "NSGraphicsContext", "NSImageRep", "NSImage", "NSRunningApplication"] }
+objc2-app-kit = { version = "0.3", features = ["NSBitmapImageRep", "NSCursor", "NSGraphics", "NSGraphicsContext", "NSImageRep", "NSImage", "NSRunningApplication", "NSWorkspace"] }
 objc2-foundation = { version = "0.3", features = ["NSData", "NSDictionary"] }
 
 [target.'cfg(windows)'.dependencies]
@@ -67,11 +67,13 @@ windows = { version = "0.62", features = [
   "Win32_System_Com_StructuredStorage",
   "Win32_System_Variant",
   "Win32_System_WinRT_Direct3D11",
-  "Win32_System_WinRT_Graphics_Capture"
+  "Win32_System_WinRT_Graphics_Capture",
+  "Win32_UI_Shell"
 ] }
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
+  "Win32_System_Com",
   "Win32_System_Registry",
   "Win32_System_Threading",
   "Win32_UI_Shell",

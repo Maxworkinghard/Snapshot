@@ -4,6 +4,7 @@
 //! 共享代码只经 `os::` 调用，不再到处写 `#[cfg(target_os = …)]`。
 //! 实现都用系统原生能力：WGC + Media Foundation 录制、注册表自启。
 
+mod apps;
 mod autostart;
 mod cursor;
 mod icon;
@@ -16,6 +17,7 @@ use crate::recording::RecordOptions;
 use image::RgbaImage;
 use std::{fs, path::Path, process::Command};
 
+pub(crate) use apps::{installed_apps, launch_icon_png, launch_target};
 pub(crate) use autostart::apply as apply_autostart;
 pub(crate) use icon::app_icon_png;
 pub(crate) use window::restore_minimized;

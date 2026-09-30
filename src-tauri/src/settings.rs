@@ -105,6 +105,11 @@ pub(crate) struct Settings {
     pub(crate) record_microphone: bool,
     #[serde(default = "default_after_capture")]
     pub(crate) after_capture: String,
+    /// 启动台顶层顺序，`app:<id>` 或 `folder:<id>`。空的表示还没排过，按名字排。
+    #[serde(default)]
+    pub(crate) launchpad_order: Vec<String>,
+    #[serde(default)]
+    pub(crate) launchpad_folders: Vec<super::launchpad::LaunchpadFolder>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -174,6 +179,8 @@ impl Default for Settings {
             record_system_audio: false,
             record_microphone: false,
             after_capture: default_after_capture(),
+            launchpad_order: Vec::new(),
+            launchpad_folders: Vec::new(),
         }
     }
 }
