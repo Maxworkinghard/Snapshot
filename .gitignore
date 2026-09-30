@@ -7,6 +7,7 @@
 /src-tauri/target/
 /src-tauri/gen/
 .claude/
+.agent-handoff/
 .zcode/
 .workbuddy/
 .workbuddy-ai/

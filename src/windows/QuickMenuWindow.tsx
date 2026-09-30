@@ -119,6 +119,12 @@ export function QuickMenuWindow() {
       void opened.then((unlisten) => unlisten()).catch(() => {});
       void settingsListener.then((unlisten) => unlisten()).catch(() => {});
       void focus.then((unlisten) => unlisten()).catch(() => {});
+      // 自动收起那次 hideQuickMenu 还挂在计时器上。不撤掉的话，窗口已经关了它才触发，
+      // 对着已经卸掉的 WebView 发调用（测试里表现为卸载后的 unhandled rejection）。
+      if (hideTimer.current !== null) {
+        window.clearTimeout(hideTimer.current);
+        hideTimer.current = null;
+      }
     };
   }, [refresh, reset]);
 
