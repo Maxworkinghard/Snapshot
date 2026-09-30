@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import type { LaunchpadView } from "./launchpad";
 import type {
   ActivityEntry,
   CapturableWindow,
@@ -76,6 +77,19 @@ export const polishText = (text: string, templateId?: string | null) =>
   invoke<string>("polish_text", { text, templateId: templateId ?? null });
 
 export const showQuickMenu = (x: number, y: number) => invoke<void>("show_quick_menu", { x, y });
+
+export const showLaunchpad = (x: number, y: number) => invoke<void>("show_launchpad", { x, y });
+
+export const hideLaunchpad = () => invoke<void>("hide_launchpad");
+
+export const launchpadState = () => invoke<LaunchpadView>("launchpad_state");
+
+export const saveLaunchpad = (layout: { order: string[]; folders: { id: string; name: string; appIds: string[] }[] }) =>
+  invoke<void>("save_launchpad", layout);
+
+export const launchApp = (id: string) => invoke<void>("launch_app", { id });
+
+export const onLaunchpadOpened = (callback: () => void) => listen("launchpad-opened", () => callback());
 
 export const hideQuickMenu = () => invoke<void>("hide_quick_menu");
 

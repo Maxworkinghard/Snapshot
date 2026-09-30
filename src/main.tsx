@@ -5,6 +5,7 @@ import { App } from "./App";
 import { PetWindow } from "./windows/PetWindow";
 import { QuickMenuWindow } from "./windows/QuickMenuWindow";
 import { AnnotateWindow } from "./windows/AnnotateWindow";
+import { LaunchpadWindow } from "./windows/LaunchpadWindow";
 import { applyTheme, listenThemeChanges, readTheme } from "./lib/theme";
 import { applyMotion, listenMotionChanges, readMotionPreference, resolveMotion } from "./lib/prefs";
 import "./styles/variables.css";
@@ -20,7 +21,7 @@ listenMotionChanges(applyMotion);
 
 function mount() {
   const label = getCurrentWindow().label;
-  const usesTransparentSurface = label === "pet" || label === "quick-menu";
+  const usesTransparentSurface = label === "pet" || label === "quick-menu" || label === "launchpad";
   document.documentElement.classList.toggle("transparent-window", usesTransparentSurface);
   document.body.classList.toggle("transparent-window", usesTransparentSurface);
 
@@ -28,6 +29,7 @@ function mount() {
     label === "pet" ? PetWindow
     : label === "quick-menu" ? QuickMenuWindow
     : label === "annotate" ? AnnotateWindow
+    : label === "launchpad" ? LaunchpadWindow
     : App;
   createRoot(document.getElementById("root")!).render(
     <StrictMode>

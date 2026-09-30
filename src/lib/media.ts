@@ -26,5 +26,9 @@ export const petThumbUrl = (assetId: string) => media(`pet-thumb/${assetId}`);
 export const iconUrl = (pid: number, cssSize: number) =>
   media(`icon/${pid}/${Math.min(256, Math.ceil(cssSize * window.devicePixelRatio))}`);
 
+/** 启动台里的应用图标。id 是后端给的应用 id，不是任意路径 */
+export const launchIconUrl = (id: string, cssSize: number) =>
+  media(`launch-icon/${id}/${Math.min(256, Math.ceil(cssSize * (window.devicePixelRatio || 1)))}`);
+
 /** 后端只放行设置里选定的那一个音效文件 */
 export const soundUrl = (path: string) => media(`sound/${path}`);

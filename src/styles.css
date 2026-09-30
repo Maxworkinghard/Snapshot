@@ -363,3 +363,88 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .palette-status { display: flex; align-items: center; padding: 8px 18px 10px; border-top: 1px solid var(--rule); color: var(--ink-2); animation: rise-in var(--t-open) var(--ease-enter); }
 .palette-status.is-ok { color: var(--ink); }
 .palette-status.is-error { color: var(--signal); }
+
+/* ---------- 启动台 ---------- */
+
+.launchpad {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 28px;
+  width: 100vw; height: 100vh; padding: 48px 0 36px; overflow: hidden;
+  background: rgba(10, 9, 8, 0.86); color: #f4f1ea;
+  user-select: none; cursor: default; touch-action: none;
+}
+.launchpad-search {
+  width: min(420px, 70vw); height: 40px; padding: 0 16px;
+  border: 0; border-radius: 20px; background: rgba(255, 255, 255, 0.16);
+  color: inherit; font: inherit; font-size: 15px; text-align: center; user-select: text;
+}
+.launchpad-search::placeholder { color: rgba(244, 241, 234, 0.62); }
+.launchpad-search:focus { outline: 1px solid rgba(255, 255, 255, 0.45); }
+.launchpad-status { margin: 48px 0 0; color: rgba(244, 241, 234, 0.8); font-size: 14px; }
+.launchpad-status.is-error { color: #ffb1a3; }
+/* 每一页跟窗口一样宽，邻页才从屏幕边缘进来。透明 WebView 裁不住半页宽的位移。 */
+.launchpad-viewport { width: 100%; overflow: hidden; touch-action: none; }
+.launchpad-track { display: flex; align-items: flex-start; will-change: transform; }
+.launchpad-page {
+  flex: 0 0 var(--lp-page, 100vw); width: var(--lp-page, 100vw);
+  box-sizing: border-box; padding: 0 64px;
+}
+.launchpad-grid {
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 18px 8px; width: 100%; align-content: start;
+}
+.launchpad-grid.is-search {
+  width: min(1080px, calc(100% - 128px)); max-height: calc(100vh - 180px);
+  overflow: auto; align-content: start;
+}
+.launchpad-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer;
+}
+.launchpad-icon, .launchpad-folder-preview, .launchpad-fallback {
+  display: grid; place-items: center; width: 88px; height: 88px;
+}
+.launchpad-icon img, .launchpad-fallback {
+  width: 72px; height: 72px; object-fit: contain;
+}
+.launchpad-fallback {
+  border-radius: 18px; background: rgba(255, 255, 255, 0.16); font-size: 28px;
+}
+.launchpad-folder-preview {
+  grid-template-columns: 1fr 1fr; gap: 4px; padding: 10px;
+  border-radius: 22px; background: rgba(255, 255, 255, 0.14);
+}
+.launchpad-folder-preview img, .launchpad-folder-preview .launchpad-fallback {
+  width: 28px; height: 28px; border-radius: 6px; font-size: 14px;
+}
+.launchpad-tile.is-drop .launchpad-icon,
+.launchpad-tile.is-drop .launchpad-folder-preview { transform: scale(1.08); }
+.launchpad-label {
+  max-width: 100%; overflow: hidden; font-size: 12px; line-height: 16px; text-align: center;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.launchpad-dots { display: flex; gap: 8px; }
+.launchpad-dots button {
+  width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35); cursor: pointer;
+}
+.launchpad-dots button.is-current { background: #f4f1ea; }
+.launchpad-folder-layer {
+  position: absolute; inset: 0; z-index: 2; display: grid; place-items: center;
+  background: rgba(10, 9, 8, 0.28);
+}
+.launchpad-folder {
+  width: min(640px, calc(100vw - 96px)); padding: 22px 22px 28px;
+  border-radius: 28px; background: rgba(255, 255, 255, 0.16);
+}
+.launchpad-folder-name {
+  display: block; width: 100%; margin: 0 0 18px; padding: 0;
+  border: 0; background: none; color: inherit; font: inherit; font-size: 15px; text-align: center;
+}
+.launchpad-folder-name:focus { outline: none; }
+.launchpad-folder-apps { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px 8px; }
+.launchpad-folder-apps .launchpad-icon, .launchpad-folder-apps .launchpad-fallback { width: 72px; height: 72px; }
+.launchpad-ghost {
+  position: fixed; z-index: 5; transform: translate(-50%, -60%); pointer-events: none;
+}
+.launchpad-ghost img, .launchpad-ghost .launchpad-fallback { width: 72px; height: 72px; }
