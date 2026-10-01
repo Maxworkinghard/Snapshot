@@ -16,7 +16,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 arboard = "3.6"
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", features = ["clock"] }
 dirs = "7"
 # 走路动作改成原地走时重新编码 GIF；image 本来就依赖它，不新增 crate
