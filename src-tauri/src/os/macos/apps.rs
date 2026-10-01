@@ -99,6 +99,7 @@ fn push_app(path: &Path, into: &mut Vec<InstalledApp>, seen: &mut HashSet<String
         id,
         name: crate::truncate(name.trim(), 80),
         target: path.to_string_lossy().to_string(),
+        listed: true,
     });
 }
 

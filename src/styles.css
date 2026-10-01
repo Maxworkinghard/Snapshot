@@ -370,7 +370,7 @@ input:focus-visible, textarea:focus-visible { outline: none; }
   position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 28px;
   width: 100vw; height: 100vh; padding: 48px 0 36px; overflow: hidden;
-  background: rgba(10, 9, 8, 0.86); color: #f4f1ea;
+  background: #0a0908; color: #f4f1ea;
   user-select: none; cursor: default; touch-action: none;
 }
 .launchpad-search {

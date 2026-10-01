@@ -117,6 +117,7 @@ fn collect(dir: &Path, into: &mut HashMap<String, InstalledApp>, depth: u32) {
                 id,
                 name: crate::truncate(&app_name, 80),
                 target: path.to_string_lossy().to_string(),
+                listed: true,
             },
         );
     }

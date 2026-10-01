@@ -14,6 +14,8 @@ pub(crate) struct InstalledApp {
     pub(crate) name: String,
     /// 平台自己的启动目标（快捷方式、.app、.desktop）。不发给页面。
     pub(crate) target: String,
+    /// 是否默认显示在网格中。隐藏条目仍可搜索和启动。
+    pub(crate) listed: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -84,6 +86,11 @@ fn arrange(
         .iter()
         .map(|app| (app.id.as_str(), app.name.as_str()))
         .collect();
+    let visible: HashSet<&str> = apps
+        .iter()
+        .filter(|app| app.listed)
+        .map(|app| app.id.as_str())
+        .collect();
     let mut used = HashSet::new();
     let mut folder_by_id: HashMap<String, LaunchpadFolder> = HashMap::new();
     let mut folder_apps: HashMap<String, Vec<AppName>> = HashMap::new();
@@ -141,9 +148,11 @@ fn arrange(
                 });
                 emitted_folders.insert(id.to_string());
             } else if let Some(app_id) = dissolved.get(id) {
-                push_app(&mut items, &mut used, &known, app_id);
+                if visible.contains(app_id.as_str()) {
+                    push_app(&mut items, &mut used, &known, app_id);
+                }
             }
-        } else if kind == "app" {
+        } else if kind == "app" && visible.contains(id) {
             push_app(&mut items, &mut used, &known, id);
         }
     }
@@ -159,7 +168,10 @@ fn arrange(
         }
     }
 
-    let mut rest: Vec<&InstalledApp> = apps.iter().filter(|app| !used.contains(&app.id)).collect();
+    let mut rest: Vec<&InstalledApp> = apps
+        .iter()
+        .filter(|app| visible.contains(app.id.as_str()) && !used.contains(&app.id))
+        .collect();
     rest.sort_by(|left, right| {
         left.name
             .to_lowercase()
@@ -379,6 +391,7 @@ mod tests {
             id: id.into(),
             name: name.into(),
             target: id.into(),
+            listed: true,
         }
     }
 
@@ -400,6 +413,110 @@ mod tests {
         let apps = vec![app("b", "记事本"), app("a", "Edge")];
         let (items, _, _) = arrange(&apps, &[], &[]);
         assert_eq!(ids(&items), ["app:a", "app:b"]);
+    }
+
+    #[test]
+    fn hidden_apps_stay_searchable_and_a_folder_keeps_one_the_user_placed() {
+        let mut hidden = app("system", "注册表编辑器");
+        hidden.listed = false;
+        let apps = vec![app("a", "A"), app("b", "B"), hidden];
+        let folders = vec![LaunchpadFolder {
+            id: "f".into(),
+            name: "办公".into(),
+            app_ids: vec!["a".into(), "system".into()],
+        }];
+        let order = vec!["app:system".into(), "folder:f".into(), "app:b".into()];
+        let (items, order, folders) = arrange(&apps, &order, &folders);
+        assert_eq!(ids(&items), ["folder:f[a,system]", "app:b"]);
+        assert_eq!(order, ["folder:f", "app:b"]);
+        assert_eq!(folders[0].app_ids, ["a", "system"]);
+        let view = view_from(&apps, items);
+        assert_eq!(view.apps.len(), 3);
+        assert!(view.apps.iter().any(|app| app.id == "system"));
+    }
+
+    #[test]
+    fn a_dissolved_folder_does_not_put_a_hidden_tool_back_on_the_grid() {
+        let mut hidden = app("defrag", "碎片整理和优化驱动器");
+        hidden.listed = false;
+        let apps = vec![app("a", "A"), hidden];
+        let folders = vec![LaunchpadFolder {
+            id: "f".into(),
+            name: "未命名".into(),
+            app_ids: vec!["defrag".into(), "gone".into()],
+        }];
+        let (items, order, folders) = arrange(&apps, &["folder:f".into()], &folders);
+        assert_eq!(ids(&items), ["app:a"]);
+        assert_eq!(order, ["app:a"]);
+        assert!(folders.is_empty());
+    }
+
+    #[test]
+    fn newly_scanned_apps_follow_existing_order_and_folders() {
+        let apps = vec![
+            app("new", "Calculator"),
+            app("a", "A"),
+            app("b", "B"),
+            app("c", "C"),
+        ];
+        let folders = vec![LaunchpadFolder {
+            id: "f".into(),
+            name: "办公".into(),
+            app_ids: vec!["b".into(), "a".into()],
+        }];
+        let (items, _, _) = arrange(&apps, &["app:c".into(), "folder:f".into()], &folders);
+        assert_eq!(ids(&items), ["app:c", "folder:f[b,a]", "app:new"]);
+    }
+
+    /// 本机分类验收：只读取已有布局，输出实际扫描清单与图标，供人工核对。
+    #[cfg(windows)]
+    #[test]
+    #[ignore]
+    fn inspect_local_catalog() {
+        let start = std::time::Instant::now();
+        let apps = os::installed_apps();
+        let elapsed = start.elapsed().as_millis();
+        let settings_path = dirs::config_dir()
+            .unwrap()
+            .join("com.appsnapshot.snapshot/settings.json");
+        let settings = settings::read_settings(&settings_path);
+        let (items, _, _) = arrange(
+            &apps,
+            &settings.launchpad_order,
+            &settings.launchpad_folders,
+        );
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join(".verify");
+        std::fs::create_dir_all(folder.join("icons")).unwrap();
+        let mut entries = Vec::new();
+        for app in &apps {
+            let icon = os::launch_icon_png(&app.target, 96);
+            if let Some(bytes) = &icon {
+                std::fs::write(folder.join("icons").join(format!("{}.png", app.id)), bytes)
+                    .unwrap();
+            }
+            entries.push(serde_json::json!({
+                "id": app.id, "name": app.name, "target": app.target,
+                "listed": app.listed, "hasIcon": icon.is_some(),
+            }));
+        }
+        let report = serde_json::json!({
+            "scanMs": elapsed, "apps": entries, "view": view_from(&apps, items),
+        });
+        std::fs::write(
+            folder.join("local-catalog.json"),
+            serde_json::to_vec_pretty(&report).unwrap(),
+        )
+        .unwrap();
+        println!(
+            "扫描 {} 项，默认显示 {} 项，{} ms；清单：{}",
+            apps.len(),
+            apps.iter().filter(|app| app.listed).count(),
+            elapsed,
+            folder.display()
+        );
     }
 
     #[test]

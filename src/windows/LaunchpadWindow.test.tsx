@@ -10,6 +10,7 @@ const state = {
     { id: "a", name: "记事本" },
     { id: "b", name: "画图" },
     { id: "c", name: "计算器" },
+    { id: "system", name: "注册表编辑器" },
   ],
   items: [
     {
@@ -137,6 +138,23 @@ describe("启动台进场与退场", () => {
 });
 
 describe("启动台窗口", () => {
+  it("默认隐藏的系统工具仍能通过中文搜索找到并启动，清空后回到网格", async () => {
+    const calls: Array<{ command: string; id?: string }> = [];
+    await openPad(calls);
+    expect(await screen.findByRole("button", { name: "计算器" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "注册表编辑器" })).toBeNull();
+    const search = screen.getByRole("textbox", { name: "搜索应用" });
+    fireEvent.change(search, { target: { value: "注册表" } });
+    const tool = await screen.findByRole("button", { name: "注册表编辑器" });
+    expect(screen.queryByRole("button", { name: "计算器" })).toBeNull();
+    fireEvent.pointerDown(tool, { button: 0, clientX: 4, clientY: 4 });
+    fireEvent.pointerUp(window);
+    expect(calls).toContainEqual({ command: "launch_app", id: "system" });
+    fireEvent.change(search, { target: { value: "" } });
+    expect(await screen.findByRole("button", { name: "计算器" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "注册表编辑器" })).toBeNull();
+  });
+
   it("文件夹里的应用不在外面，搜索能找到，点一下会启动", async () => {
     const calls: Array<{ command: string; id?: string }> = [];
     await openPad(calls);

@@ -10,11 +10,18 @@ use std::{
     sync::mpsc::{self, Sender},
     thread,
 };
+use windows::{
+    core::PCWSTR,
+    Win32::{
+        Foundation::SIZE,
+        UI::Shell::{IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_ICONONLY},
+    },
+};
 use windows_sys::Win32::{
     Foundation::{CloseHandle, HANDLE},
     Graphics::Gdi::{
-        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject, BITMAPINFO,
-        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDIBits, GetObjectW,
+        SelectObject, BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP,
     },
     System::{
         Com::{CoInitializeEx, COINIT_APARTMENTTHREADED},
@@ -101,6 +108,10 @@ fn icon_requests() -> Sender<IconRequest> {
                         let _ = CoInitializeEx(null(), COINIT_APARTMENTTHREADED as u32);
                     }
                     while let Ok(job) = rx.recv() {
+                        if packaged(&job.path) {
+                            let _ = job.reply.send(packaged_icon(&job.path, job.size));
+                            continue;
+                        }
                         let (source, index) = shortcut_icon_source(&job.path)
                             .filter(|(candidate, _)| candidate.is_file())
                             .unwrap_or((job.path.clone(), 0));
@@ -128,6 +139,98 @@ pub(crate) fn png_for_path(path: &Path, size: u32) -> Option<Vec<u8>> {
         })
         .ok()?;
     crate::capture::encode_png(&rx.recv().ok()??).ok()
+}
+
+fn packaged(path: &Path) -> bool {
+    path.to_string_lossy().starts_with(super::apps::APPS_FOLDER)
+}
+
+/// 商店应用用 Shell 命名空间取图标，沿用快捷方式的串行 STA 线程。
+fn packaged_icon(path: &Path, size: i32) -> Option<RgbaImage> {
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    unsafe {
+        let factory: IShellItemImageFactory =
+            SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None).ok()?;
+        let bitmap = factory
+            .GetImage(SIZE { cx: size, cy: size }, SIIGBF_ICONONLY)
+            .ok()?;
+        let image = bitmap_image(bitmap.0);
+        DeleteObject(bitmap.0);
+        let image = image?;
+        if image.width() == size as u32 && image.height() == size as u32 {
+            return Some(image);
+        }
+        let scaled = image::imageops::thumbnail(&image, size as u32, size as u32);
+        let mut square = RgbaImage::new(size as u32, size as u32);
+        image::imageops::overlay(
+            &mut square,
+            &scaled,
+            (size as i64 - scaled.width() as i64) / 2,
+            (size as i64 - scaled.height() as i64) / 2,
+        );
+        Some(square)
+    }
+}
+
+fn bitmap_image(bitmap: HBITMAP) -> Option<RgbaImage> {
+    unsafe {
+        let mut object: BITMAP = zeroed();
+        if GetObjectW(
+            bitmap,
+            size_of::<BITMAP>() as i32,
+            &mut object as *mut _ as *mut c_void,
+        ) == 0
+        {
+            return None;
+        }
+        let (width, height) = (object.bmWidth, object.bmHeight.checked_abs()?);
+        if width <= 0 || height <= 0 || width > 1024 || height > 1024 {
+            return None;
+        }
+        let mut info: BITMAPINFO = zeroed();
+        info.bmiHeader.biSize = size_of::<BITMAPINFOHEADER>() as u32;
+        info.bmiHeader.biWidth = width;
+        info.bmiHeader.biHeight = -height;
+        info.bmiHeader.biPlanes = 1;
+        info.bmiHeader.biBitCount = 32;
+        info.bmiHeader.biCompression = BI_RGB;
+        let dc = CreateCompatibleDC(null_mut());
+        if dc.is_null() {
+            return None;
+        }
+        let mut pixels = vec![0u8; width as usize * height as usize * 4];
+        let rows = GetDIBits(
+            dc,
+            bitmap,
+            0,
+            height as u32,
+            pixels.as_mut_ptr() as *mut c_void,
+            &mut info,
+            DIB_RGB_COLORS,
+        );
+        DeleteDC(dc);
+        if rows != height {
+            return None;
+        }
+        let has_alpha = pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[3] != 0);
+        for pixel in pixels.as_chunks_mut::<4>().0 {
+            pixel.swap(0, 2);
+            if !has_alpha {
+                pixel[3] = 255;
+            } else if pixel[3] > 0 {
+                // Shell 的位图使用预乘 alpha，PNG 需要普通 RGBA，避免半透明边缘发黑。
+                let alpha = pixel[3] as u32;
+                for channel in &mut pixel[..3] {
+                    *channel = ((*channel as u32 * 255 + alpha / 2) / alpha).min(255) as u8;
+                }
+            }
+        }
+        RgbaImage::from_raw(width as u32, height as u32, pixels)
+    }
 }
 
 /// 快捷方式文件上的图标自带一个小箭头。能解析出真正的图标文件时，用那个，箭头就没了。
