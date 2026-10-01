@@ -103,7 +103,7 @@ jobs:
           done
           mkdir -p dist/release
           ditto -c -k --keepParent "$APP" "dist/release/snapshot-${VERSION}-macos-universal.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: dist/release/snapshot-*-macos-universal.zip
@@ -141,7 +141,7 @@ jobs:
             test -f "$SRC" || { echo "error: missing $SRC" >&2; ls -la "src-tauri/target/$1/release/bundle/nsis" || true; exit 1; }
             cp "$SRC" "dist/release/snapshot-${VERSION}-windows-$2.exe"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: |
